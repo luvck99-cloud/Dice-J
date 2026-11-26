@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>3D 리얼 주사위</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter & Noto Sans KR -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@600;800;900&family=Noto+Sans+KR:wght@500;700;900&display=swap" rel="stylesheet">
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        body {
+            font-family: 'Noto Sans KR', 'Inter', sans-serif;
+            touch-action: manipulation; /* 더블탭 줌 방지 */
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
+        }
+
+        /* 3D 주사위 컨테이너 (원근감) */
+        .scene {
+            width: 130px;
+            height: 130px;
+            perspective: 800px;
+            cursor: pointer;
+        }
+
+        @media (min-width: 640px) {
+            .scene {
+                width: 160px;
+                height: 160px;
+            }
+        }
+
+        /* 3D 큐브 본체 */
+        .cube {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            transform-style: preserve-3d;
+            transition: transform 0.85s cubic-bezier(0.2, 0.85, 0.3, 1.05);
+        }
+
+        /* 주사위 6개 면 공통 스타일 */
+        .cube__face {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border-radius: 22px;
+            background: linear-gradient(145deg, #ffffff, #e6e9ef);
+            box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.12), 
+                        inset 2px 2px 5px rgba(255, 255, 255, 0.9),
+                        0 4px 10px rgba(0, 0, 0, 0.3);
+            border: 2px solid #cbd5e1;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            padding: 16px;
+            backface-visibility: hidden; /* 뒷면 숨김 처리로 깔끔한 렌더링 */
+        }
+
+        /* 각 면의 3D 공간 배치 (모바일 기준 130px의 절반인 65px) */
+        .cube__face--1 { transform: rotateY(0deg) translateZ(65px); }
+        .cube__face--2 { transform: rotateY(90deg) translateZ(65px); }
+        .cube__face--3 { transform: rotateX(90deg) translateZ(65px); }
+        .cube__face--4 { transform: rotateX(-90deg) translateZ(65px); }
+        .cube__face--5 { transform: rotateY(-90deg) translateZ(65px); }
+        .cube__face--6 { transform: rotateY(180deg) translateZ(65px); }
+
+        @media (min-width: 640px) {
+            .cube__face { border-radius: 26px; padding: 20px; }
+            .cube__face--1 { transform: rotateY(0deg) translateZ(80px); }
+            .cube__face--2 { transform: rotateY(90deg) translateZ(80px); }
+            .cube__face--3 { transform: rotateX(90deg) translateZ(80px); }
+            .cube__face--4 { transform: rotateX(-90deg) translateZ(80px); }
+            .cube__face--5 { transform: rotateY(-90deg) translateZ(80px); }
+            .cube__face--6 { transform: rotateY(180deg) translateZ(80px); }
+        }
+
+        /* 주사위 눈 (Pip) 입체 스타일 */
+        .pip {
+            display: block;
+            align-self: center;
+            justify-self: center;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: radial-gradient(circle at 35% 35%, #334155, #0f172a);
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.6), 0 1px 1px rgba(255, 255, 255, 0.8);
+        }
+
+        @media (min-width: 640px) {
+            .pip { width: 30px; height: 30px; }
+        }
+
+        /* 1번 눈과 4번 눈은 전통적인 빨간색 포인트로 시인성 극대화 */
+        .pip--red {
+            background: radial-gradient(circle at 35% 35%, #ef4444, #991b1b);
+            width: 28px;
+            height: 28px;
+        }
+        @media (min-width: 640px) {
+            .pip--red { width: 34px; height: 34px; }
+        }
+
+        /* 주사위 바닥 그림자 애니메이션 */
+        .dice-shadow {
+            width: 110px;
+            height: 20px;
+            background: radial-gradient(ellipse at center, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0) 75%);
+            border-radius: 50%;
+            margin-top: 24px;
+            transition: transform 0.4s ease, opacity 0.4s ease;
+        }
+        .rolling-shadow {
+            transform: scale(0.6);
+            opacity: 0.3;
+        }
+
+        /* 점프 효과 애니메이션 */
+        @keyframes diceBounce {
+            0% { transform: translateY(0) scale(1); }
+            30% { transform: translateY(-45px) scale(1.08); }
+            65% { transform: translateY(5px) scale(0.96); }
+            85% { transform: translateY(-10px) scale(1.02); }
+            100% { transform: translateY(0) scale(1); }
+        }
+        .animate-bounce-dice {
+            animation: diceBounce 0.85s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        }
+
+        /* 커스텀 스크롤바 숨기기 */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="text-white h-[100dvh] flex flex-col justify-between overflow-hidden">
+
+    <!-- 상단 헤더 & 컨트롤 바 -->
+    <header class="w-full max-w-lg mx-auto px-4 pt-4 pb-2 flex items-center justify-between z-10">
+        <div class="flex items-center gap-2">
+            <div class="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
+                <i class="fa-solid fa-dice text-lg text-white"></i>
+            </div>
+            <h1 class="text-xl font-black tracking-tight text-slate-100">3D 리얼 주사위</h1>
+        </div>
+
+        <div class="flex items-center gap-2">
+            <!-- 주사위 개수 선택 토글 -->
+            <div class="bg-slate-800/90 p-1 rounded-xl border border-slate-700 flex items-center">
+                <button id="btn-count-1" onclick="setDiceCount(1)" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 text-white shadow transition">
+                    1개
+                </button>
+                <button id="btn-count-2" onclick="setDiceCount(2)" class="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-400 hover:text-white transition">
+                    2개
+                </button>
+            </div>
+
+            <!-- 사운드 켜기/끄기 버튼 -->
+            <button id="btn-sound" onclick="toggleSound()" class="w-10 h-10 rounded-xl bg-slate-800/90 border border-slate-700 flex items-center justify-center text-emerald-400 hover:bg-slate-700 active:scale-95 transition" title="효과음 켜기/끄기">
+                <i id="icon-sound" class="fa-solid fa-volume-high text-base"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- 중앙 결과 표시 및 3D 주사위 무대 -->
+    <main class="flex-1 flex flex-col items-center justify-center w-full max-w-lg mx-auto px-4 relative">
+        
+        <!-- 결과 숫자 대형 디스플레이 -->
+        <div class="text-center mb-6 sm:mb-10 h-20 flex flex-col items-center justify-center">
+            <span id="result-label" class="text-xs font-bold uppercase tracking-widest text-slate-400 mb-1">주사위를 터치하거나 버튼을 누르세요</span>
+            <div id="result-number" class="text-5xl sm:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-yellow-400 to-orange-400 drop-shadow-sm transition-all duration-200">
+                READY
+            </div>
+        </div>
+
+        <!-- 3D 주사위 렌더링 영역 -->
+        <div id="dice-arena" onclick="rollDice()" class="flex items-center justify-center gap-6 sm:gap-12 py-6 px-4 rounded-3xl w-full cursor-pointer">
+            
+            <!-- 주사위 1 -->
+            <div id="dice-wrapper-1" class="flex flex-col items-center">
+                <div class="scene">
+                    <div id="cube-1" class="cube">
+                        <!-- 1면 -->
+                        <div class="cube__face cube__face--1">
+                            <span></span><span></span><span></span>
+                            <span></span><span class="pip pip--red"></span><span></span>
+                            <span></span><span></span><span></span>
+                        </div>
+                        <!-- 2면 -->
+                        <div class="cube__face cube__face--2">
+                            <span class="pip"></span><span></span><span></span>
+                            <span></span><span></span><span></span>
+                            <span></span><span></span><span class="pip"></span>
+                        </div>
+                        <!-- 3면 -->
+                        <div class="cube__face cube__face--3">
+                            <span class="pip"></span><span></span><span></span>
+                            <span></span><span class="pip"></span><span></span>
+                            <span></span><span></span><span class="pip"></span>
+                        </div>
+                        <!-- 4면 -->
+                        <div class="cube__face cube__face--4">
+                            <span class="pip pip--red"></span><span></span><span class="pip pip--red"></span>
+                            <span></span><span></span><span></span>
+                            <span class="pip pip--red"></span><span></span><span class="pip pip--red"></span>
+                        </div>
+                        <!-- 5면 -->
+                        <div class="cube__face cube__face--5">
+                            <span class="pip"></span><span></span><span class="pip"></span>
+                            <span></span><span class="pip"></span><span></span>
+                            <span class="pip"></span><span></span><span class="pip"></span>
+                        </div>
+                        <!-- 6면 -->
+                        <div class="cube__face cube__face--6">
+                            <span class="pip"></span><span></span><span class="pip"></span>
+                            <span class="pip"></span><span></span><span class="pip"></span>
+                            <span class="pip"></span><span></span><span class="pip"></span>
+                        </div>
+                    </div>
+                </div>
+                <div id="shadow-1" class="dice-shadow"></div>
+            </div>
+
+            <!-- 주사위 2 (초기 숨김) -->
+            <div id="dice-wrapper-2" class="hidden flex-col items-center">
+                <div class="scene">
+                    <div id="cube-2" class="cube">
+                        <!-- 1면 -->
+                        <div class="cube__face cube__face--1">
+                            <span></span><span></span><span></span>
+                            <span></span><span class="pip pip--red"></span><span></span>
+                            <span></span><span></span><span></span>
+                        </div>
+                        <!-- 2면 -->
+                        <div class="cube__face cube__face--2">
+                            <span class="pip"></span><span></span><span></span>
+                            <span></span><span></span><span></span>
+                            <span></span><span></span><span class="pip"></span>
+                        </div>
+                        <!-- 3면 -->
+                        <div class="cube__face cube__face--3">
+                            <span class="pip"></span><span></span><span></span>
+                            <span></span><span class="pip"></span><span></span>
+                            <span></span><span></span><span class="pip"></span>
+                        </div>
+                        <!-- 4면 -->
+                        <div class="cube__face cube__face--4">
+                            <span class="pip pip--red"></span><span></span><span class="pip pip--red"></span>
+                            <span></span><span></span><span></span>
+                            <span class="pip pip--red"></span><span></span><span class="pip pip--red"></span>
+                        </div>
+                        <!-- 5면 -->
+                        <div class="cube__face cube__face--5">
+                            <span class="pip"></span><span></span><span class="pip"></span>
+                            <span></span><span class="pip"></span><span></span>
+                            <span class="pip"></span><span></span><span class="pip"></span>
+                        </div>
+                        <!-- 6면 -->
+                        <div class="cube__face cube__face--6">
+                            <span class="pip"></span><span></span><span class="pip"></span>
+                            <span class="pip"></span><span></span><span class="pip"></span>
+                            <span class="pip"></span><span></span><span class="pip"></span>
+                        </div>
+                    </div>
+                </div>
+                <div id="shadow-2" class="dice-shadow"></div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- 하단 최근 기록 & 대형 굴리기 버튼 -->
+    <footer class="w-full max-w-lg mx-auto px-4 pb-6 pt-2 flex flex-col gap-4 z-10">
+        
+        <!-- 최근 기록 바 -->
+        <div class="bg-slate-800/70 backdrop-blur-md border border-slate-700/80 rounded-2xl p-3 flex items-center justify-between">
+            <div class="flex items-center gap-2 text-xs font-bold text-slate-400 shrink-0 mr-2">
+                <i class="fa-solid fa-clock-rotate-left text-indigo-400"></i>
+                <span>최근 기록</span>
+            </div>
+            <div id="history-list" class="flex items-center gap-2 overflow-x-auto no-scrollbar flex-1 justify-end">
+                <span class="text-xs text-slate-500">기록 없음</span>
+            </div>
+            <button onclick="clearHistory()" class="ml-2 text-xs text-slate-500 hover:text-slate-300 px-1.5 py-1" title="기록 초기화">
+                <i class="fa-solid fa-trash-can"></i>
+            </button>
+        </div>
+
+        <!-- 메인 액션 버튼 -->
+        <button id="btn-roll" onclick="rollDice()" class="w-full py-5 rounded-2xl bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-600 hover:from-indigo-500 hover:to-blue-500 active:scale-[0.98] text-white font-black text-xl sm:text-2xl tracking-wide shadow-xl shadow-indigo-600/30 border border-indigo-400/30 flex items-center justify-center gap-3 transition-all">
+            <i class="fa-solid fa-dice-d6 text-2xl"></i>
+            <span>주사위 굴리기</span>
+        </button>
+    </footer>
+
+    <script>
+        /**
+         * 상태 관리 변수
+         */
+        let diceCount = 1;
+        let isRolling = false;
+        let soundEnabled = true;
+        let history = [];
+        
+        // 누적 회전 각도 저장 (자연스러운 연속 회전을 위해 필수)
+        let currentRotation = {
+            1: { x: -20, y: 25 },
+            2: { x: -20, y: -25 }
+        };
+
+        // 각 숫자(1~6)가 정면을 향하기 위한 기본 회전 각도 매핑
+        const faceRotations = {
+            1: { x: 0, y: 0 },
+            2: { x: 0, y: -90 },
+            3: { x: -90, y: 0 },
+            4: { x: 90, y: 0 },
+            5: { x: 0, y: 90 },
+            6: { x: 0, y: 180 }
+        };
+
+        /**
+         * 초강력 Web Audio API 사운드 엔진 (최대 음량 부스트 적용)
+         */
+        let audioCtx = null;
+
+        function initAudio() {
+            if (!audioCtx) {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                audioCtx = new AudioContext();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        // 마스터 출력 체인 생성 (Gain 부스트 + Compressor로 찢어짐 방지 및 음압 극대화)
+        function createMasterOutput() {
+            const compressor = audioCtx.createDynamicsCompressor();
+            compressor.threshold.setValueAtTime(-12, audioCtx.currentTime); // 낮은 소리도 끌어올림
+            compressor.knee.setValueAtTime(10, audioCtx.currentTime);
+            compressor.ratio.setValueAtTime(12, audioCtx.currentTime);     // 강한 압축으로 음압 극대화
+            compressor.attack.setValueAtTime(0.002, audioCtx.currentTime);
+            compressor.release.setValueAtTime(0.15, audioCtx.currentTime);
+
+            const masterGain = audioCtx.createGain();
+            masterGain.gain.setValueAtTime(3.2, audioCtx.currentTime); // 3.2배 증폭 후 컴프레서로 리미팅
+
+            masterGain.connect(compressor);
+            compressor.connect(audioCtx.destination);
+            return masterGain;
+        }
+
+        // 주사위가 컵/바닥에 부딪히는 달그락 소리 (단일 타격음 합성)
+        function playClackSound(timeOffset, intensity = 1.0) {
+            if (!soundEnabled || !audioCtx) return;
+
+            const startTime = audioCtx.currentTime + timeOffset;
+            const master = createMasterOutput();
+
+            // 1. 단단한 플라스틱/상아 충돌음 (고주파 공명 오실레이터)
+            const osc = audioCtx.createOscillator();
+            const oscGain = audioCtx.createGain();
+            
+            // 불규칙한 나무/플라스틱 타격 주파수 (800Hz ~ 2200Hz)
+            const baseFreq = 950 + Math.random() * 1100;
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(baseFreq, startTime);
+            osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.35, startTime + 0.045);
+
+            oscGain.gain.setValueAtTime(0.001, startTime);
+            oscGain.gain.linearRampToValueAtTime(1.0 * intensity, startTime + 0.003);
+            oscGain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.055);
+
+            osc.connect(oscGain);
+            oscGain.connect(master);
+
+            osc.start(startTime);
+            osc.stop(startTime + 0.06);
+
+            // 2. 바닥 충격 타격감 (저음 펀치 + 화이트 노이즈 버스트)
+            const bufferSize = audioCtx.sampleRate * 0.04;
+            const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+            const output = noiseBuffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                output[i] = Math.random() * 2 - 1;
+            }
+
+            const whiteNoise = audioCtx.createBufferSource();
+            whiteNoise.buffer = noiseBuffer;
+
+            const filter = audioCtx.createBiquadFilter();
+            filter.type = 'bandpass';
+            filter.frequency.setValueAtTime(1600 + Math.random() * 800, startTime);
+            filter.Q.setValueAtTime(2.5, startTime);
+
+            const noiseGain = audioCtx.createGain();
+            noiseGain.gain.setValueAtTime(0.9 * intensity, startTime);
+            noiseGain.gain.exponentialRampToValueAtTime(0.01, startTime + 0.038);
+
+            whiteNoise.connect(filter);
+            filter.connect(noiseGain);
+            noiseGain.connect(master);
+
+            whiteNoise.start(startTime);
+        }
+
+        // 주사위 구르는 전체 시퀀스 효과음 (여러 번 튕기는 리듬)
+        function playRollSequence() {
+            if (!soundEnabled) return;
+            initAudio();
+
+            // 점점 빨라지다 멈추는 물리적 바운스 타이밍 (초 단위)
+            const bounceTimings = [
+                { t: 0.02, vol: 1.0 },
+                { t: 0.11, vol: 0.95 },
+                { t: 0.21, vol: 1.0 },
+                { t: 0.32, vol: 0.85 },
+                { t: 0.44, vol: 0.9 },
+                { t: 0.55, vol: 0.7 },
+                { t: 0.65, vol: 0.55 },
+                { t: 0.73, vol: 0.4 }
+            ];
+
+            bounceTimings.forEach(b => {
+                playClackSound(b.t, b.vol);
+                // 주사위가 2개일 때는 미세한 시차를 두고 한 번 더 타격음 발생
+                if (diceCount === 2) {
+                    playClackSound(b.t + 0.025, b.vol * 0.85);
+                }
+            });
+        }
+
+        // 결과 확정 시 경쾌하고 웅장한 팡파르/벨 효과음
+        function playResultChime(isDoubleOrMax = false) {
+            if (!soundEnabled || !audioCtx) return;
+            const now = audioCtx.currentTime;
+            const master = createMasterOutput();
+
+            // 기본 경쾌한 2화음 또는 높은 숫자/더블 시 3화음 아르페지오
+            const notes = isDoubleOrMax ? [523.25, 659.25, 783.99, 1046.50] : [587.33, 880.00];
+
+            notes.forEach((freq, idx) => {
+                const startTime = now + idx * 0.055;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, startTime);
+
+                gain.gain.setValueAtTime(0.001, startTime);
+                gain.gain.linearRampToValueAtTime(0.75, startTime + 0.015);
+                gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.35);
+
+                osc.connect(gain);
+                gain.connect(master);
+
+                osc.start(startTime);
+                osc.stop(startTime + 0.36);
+            });
+        }
+
+        /**
+         * UI 및 주사위 동작 제어
+         */
+        function toggleSound() {
+            soundEnabled = !soundEnabled;
+            const icon = document.getElementById('icon-sound');
+            const btn = document.getElementById('btn-sound');
+
+            if (soundEnabled) {
+                initAudio();
+                icon.className = 'fa-solid fa-volume-high text-base';
+                btn.classList.remove('text-slate-500');
+                btn.classList.add('text-emerald-400');
+                playClackSound(0, 0.8); // 켜짐 확인음
+            } else {
+                icon.className = 'fa-solid fa-volume-xmark text-base';
+                btn.classList.remove('text-emerald-400');
+                btn.classList.add('text-slate-500');
+            }
+        }
+
+        function setDiceCount(count) {
+            if (isRolling || diceCount === count) return;
+            diceCount = count;
+
+            const btn1 = document.getElementById('btn-count-1');
+            const btn2 = document.getElementById('btn-count-2');
+            const wrapper2 = document.getElementById('dice-wrapper-2');
+
+            if (count === 1) {
+                btn1.className = 'px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 text-white shadow transition';
+                btn2.className = 'px-3 py-1.5 rounded-lg text-xs font-bold text-slate-400 hover:text-white transition';
+                wrapper2.classList.add('hidden');
+                wrapper2.classList.remove('flex');
+            } else {
+                btn2.className = 'px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 text-white shadow transition';
+                btn1.className = 'px-3 py-1.5 rounded-lg text-xs font-bold text-slate-400 hover:text-white transition';
+                wrapper2.classList.remove('hidden');
+                wrapper2.classList.add('flex');
+            }
+
+            document.getElementById('result-label').innerText = `주사위 ${count}개 모드`;
+            document.getElementById('result-number').innerText = 'READY';
+        }
+
+        // 주사위 굴리기 핵심 함수
+        function rollDice() {
+            if (isRolling) return;
+            isRolling = true;
+
+            // 모바일 진동 피드백 (지원 기기)
+            if (navigator.vibrate) {
+                navigator.vibrate([40, 30, 40, 30, 60]);
+            }
+
+            // 효과음 재생
+            playRollSequence();
+
+            const resultLabel = document.getElementById('result-label');
+            const resultNumber = document.getElementById('result-number');
+            const btnRoll = document.getElementById('btn-roll');
+
+            resultLabel.innerText = '데굴데굴 구르는 중...';
+            resultNumber.innerText = '...';
+            resultNumber.classList.add('scale-90', 'opacity-70');
+            btnRoll.classList.add('opacity-75', 'cursor-not-allowed');
+
+            // 난수 생성 (암호학적 난수 또는 Math.random 활용)
+            const val1 = Math.floor(Math.random() * 6) + 1;
+            const val2 = diceCount === 2 ? Math.floor(Math.random() * 6) + 1 : 0;
+
+            // 주사위 1 애니메이션 적용
+            animateSingleCube(1, val1);
+            if (diceCount === 2) {
+                animateSingleCube(2, val2);
+            }
+
+            // 0.85초 후 애니메이션 종료 및 결과 발표
+            setTimeout(() => {
+                isRolling = false;
+                btnRoll.classList.remove('opacity-75', 'cursor-not-allowed');
+                resultNumber.classList.remove('scale-90', 'opacity-70');
+
+                const total = val1 + val2;
+                const isSpecial = (diceCount === 1 && val1 === 6) || (diceCount === 2 && (val1 === val2 || total === 12));
+
+                if (diceCount === 1) {
+                    resultLabel.innerText = '결과';
+                    resultNumber.innerText = val1;
+                    addHistory(`${val1}`);
+                } else {
+                    resultLabel.innerText = val1 === val2 ? `더블! (${val1} + ${val2})` : `합계 (${val1} + ${val2})`;
+                    resultNumber.innerText = total;
+                    addHistory(`${total} (${val1}+${val2})`);
+                }
+
+                // 결과 확정 효과음
+                playResultChime(isSpecial);
+
+            }, 850);
+        }
+
+        function animateSingleCube(index, targetValue) {
+            const cube = document.getElementById(`cube-${index}`);
+            const wrapper = document.getElementById(`dice-wrapper-${index}`);
+            const shadow = document.getElementById(`shadow-${index}`);
+
+            // 점프 & 그림자 클래스 리셋 후 재적용
+            wrapper.classList.remove('animate-bounce-dice');
+            shadow.classList.remove('rolling-shadow');
+            void wrapper.offsetWidth; // Reflow 강제 실행
+            wrapper.classList.add('animate-bounce-dice');
+            shadow.classList.add('rolling-shadow');
+
+            setTimeout(() => {
+                shadow.classList.remove('rolling-shadow');
+            }, 600);
+
+            // 목표 면의 기본 각도
+            const targetBase = faceRotations[targetValue];
+
+            // 현재 각도에서 최소 2~4바퀴(720도 ~ 1440도) 이상 더 회전하도록 계산
+            const extraSpinsX = (Math.floor(Math.random() * 3) + 2) * 360;
+            const extraSpinsY = (Math.floor(Math.random() * 3) + 2) * 360;
+
+            // 현재 누적 각도를 360으로 나눈 나머지를 보정하여 정확히 목표 면에 안착
+            const currentModX = currentRotation[index].x % 360;
+            const currentModY = currentRotation[index].y % 360;
+
+            const nextX = currentRotation[index].x - currentModX + extraSpinsX + targetBase.x;
+            const nextY = currentRotation[index].y - currentModY + extraSpinsY + targetBase.y;
+
+            currentRotation[index] = { x: nextX, y: nextY };
+
+            cube.style.transform = `rotateX(${nextX}deg) rotateY(${nextY}deg)`;
+        }
+
+        function addHistory(recordText) {
+            history.unshift(recordText);
+            if (history.length > 10) history.pop();
+            renderHistory();
+        }
+
+        function clearHistory() {
+            history = [];
+            renderHistory();
+        }
+
+        function renderHistory() {
+            const list = document.getElementById('history-list');
+            if (history.length === 0) {
+                list.innerHTML = '<span class="text-xs text-slate-500">기록 없음</span>';
+                return;
+            }
+
+            list.innerHTML = history.map((item, idx) => `
+                <span class="px-2.5 py-1 rounded-lg text-xs font-extrabold shrink-0 ${
+                    idx === 0 
+                    ? 'bg-indigo-600 text-white shadow-sm' 
+                    : 'bg-slate-700/80 text-slate-300'
+                }">
+                    ${item}
+                </span>
+            `).join('');
+        }
+
+        // 초기 화면 세팅 시 살짝 입체적인 각도로 대기
+        window.onload = () => {
+            document.getElementById('cube-1').style.transform = 'rotateX(-20deg) rotateY(25deg)';
+            document.getElementById('cube-2').style.transform = 'rotateX(-20deg) rotateY(-25deg)';
+        };
+    </script>
+</body>
+</html>
